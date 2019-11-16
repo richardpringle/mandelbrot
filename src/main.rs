@@ -2,7 +2,7 @@ extern crate num;
 
 use image::{png::PNGEncoder, ColorType};
 use num::Complex;
-use std::{fs::File, io, str::FromStr};
+use std::{fmt::Debug, fs::File, io, str::FromStr};
 
 type Point = (usize, usize);
 
@@ -27,7 +27,10 @@ fn main() {
     let upper_left = parse_complex(&args[3]).expect("error parsing upper left corner point");
     let lower_right = parse_complex(&args[4]).expect("error parsing lower right corner point");
 
-    let corner = Corner { upper_left, lower_right };
+    let corner = Corner {
+        upper_left,
+        lower_right,
+    };
 
     let mut pixels = vec![0; bounds.0 * bounds.1];
 
@@ -77,12 +80,25 @@ fn parse_complex(s: &str) -> Option<Complex<f64>> {
     parse_pair(s, ',').map(|(re, im)| Complex { re, im })
 }
 
-fn parse_pair<T: FromStr>(s: &str, separator: char) -> Option<(T, T)> {
+fn parse_pair<T:FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)>
+    where <T as std::str::FromStr>::Err : std::fmt::Debug
+{
     s.find(separator).and_then(|index| {
-        let left = T::from_str(&s[..index]).ok();
-        let right = T::from_str(&s[index + 1..]).ok();
+        let (start, rest) = (&s[..index], &s[index + 1..]);
 
-        left.into_iter().zip(right).last()
+        let left = T::from_str(start).expect(&format!(
+            "Error parsing `{:?}` with separator, `{:?}`",
+            start,
+            separator,
+        ));
+
+        let right = T::from_str(rest).expect(&format!(
+            "Error parsing `{:?}` with separator, `{:?}`",
+            rest,
+            separator,
+        ));
+
+        Some((left, right))
     })
 }
 
