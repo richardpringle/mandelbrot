@@ -15,48 +15,56 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() != 5 {
-        eprintln!("Usage: mandelbrot FILE PIXELS UPPERLEFT LOWERRIGHT");
-        eprintln!(
-            "Example: {} mandel.png 1000x750 -1.20,0.35 -1,0.20",
-            args[0]
-        );
-        std::process::exit(1);
+        show_proper_usage(&args);
     }
 
     let bounds = parse_pair::<usize>(&args[2], 'x').expect("error parsing image dimensions");
     let upper_left = parse_complex(&args[3]).expect("error parsing upper left corner point");
     let lower_right = parse_complex(&args[4]).expect("error parsing lower right corner point");
 
-    let corner = Corner {
-        upper_left,
-        lower_right,
-    };
+    let (width, height) = bounds;
+    let mut pixels = vec![0; width * height];
 
-    let mut pixels = vec![0; bounds.0 * bounds.1];
-
-    render(&mut pixels, bounds, corner);
+    render(
+        &mut pixels,
+        bounds,
+        Corner {
+            upper_left,
+            lower_right,
+        },
+    );
 
     write_image(&args[1], &pixels, bounds).expect("error writing png file")
 }
 
-fn write_image(filename: &str, pixels: &[u8], bounds: Point) -> Result<(), io::Error> {
+fn show_proper_usage(args: &[String]) {
+    eprintln!("Usage: mandelbrot FILE PIXELS UPPERLEFT LOWERRIGHT");
+    eprintln!(
+        "Example: {} mandel.png 1000x750 -1.20,0.35 -1,0.20",
+        args[0]
+    );
+    std::process::exit(1);
+}
+
+fn write_image(filename: &str, pixels: &[u8], (width, height): Point) -> Result<(), io::Error> {
     let output = File::create(filename)?;
     let encoder = PNGEncoder::new(output);
-
-    let (width, height) = bounds;
 
     encoder.encode(&pixels, width as u32, height as u32, ColorType::Gray(8))
 }
 
 fn render(pixels: &mut [u8], bounds: Point, corner: Corner) {
-    assert!(pixels.len() == bounds.0 * bounds.1);
+    let (width, height) = bounds;
+    assert!(pixels.len() == width * height);
 
     let limit = 255_u32;
-    let pixel_iter = (0..bounds.1).flat_map(|row| (0..bounds.0).map(move |column| (column, row)));
+    let pixel_iter = (0..height).flat_map(|row| (0..width).map(move |column| (column, row)));
 
-    pixel_iter.for_each(|(column, row)| {
-        let point = pixel_to_point(&bounds, &corner, (column, row));
-        pixels[row * bounds.0 + column] =
+    pixel_iter.for_each(|point| {
+        let (column, row) = point;
+        let point = pixel_to_point(&bounds, &corner, point);
+
+        pixels[row * width + column] =
             escape_time(point, limit).map_or(0, |count| (limit - count) as u8);
     })
 }
@@ -80,36 +88,34 @@ fn parse_complex(s: &str) -> Option<Complex<f64>> {
     parse_pair(s, ',').map(|(re, im)| Complex { re, im })
 }
 
-fn parse_pair<T:FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)>
-    where <T as std::str::FromStr>::Err : std::fmt::Debug
-{
-    s.find(separator).and_then(|index| {
+fn parse_pair<T: FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)> {
+    s.find(separator).map(|index| {
         let (start, rest) = (&s[..index], &s[index + 1..]);
 
-        let left = T::from_str(start).expect(&format!(
-            "Error parsing `{:?}` with separator, `{:?}`",
-            start,
-            separator,
-        ));
+        let left = T::from_str(start).unwrap_or_else(parse_exit(start, s, separator));
+        let right = T::from_str(rest).unwrap_or_else(parse_exit(rest, s, separator));
 
-        let right = T::from_str(rest).expect(&format!(
-            "Error parsing `{:?}` with separator, `{:?}`",
-            rest,
-            separator,
-        ));
-
-        Some((left, right))
+        (left, right)
     })
 }
 
-fn escape_time(c: Complex<f64>, limit: u32) -> Option<u32> {
-    (0..limit)
-        .skip_while(is_in_range(Complex { re: 0.0, im: 0.0 }, c))
-        .take(1)
-        .last()
+fn parse_exit<'a, T, E>(sub: &'a str, s: &'a str, separator: char) -> impl FnOnce(E) -> T + 'a {
+    move |_| {
+        eprintln!(
+            "Error parsing {:?} from {:?} with separator, \"{}\"",
+            sub, s, separator,
+        );
+
+        std::process::exit(1)
+    }
 }
 
-fn is_in_range<T>(mut z: Complex<f64>, c: Complex<f64>) -> impl FnMut(&T) -> bool {
+fn escape_time(c: Complex<f64>, limit: u32) -> Option<u32> {
+    (0..limit).skip_while(is_in_range(c)).take(1).last()
+}
+
+fn is_in_range<T>(c: Complex<f64>) -> impl FnMut(&T) -> bool {
+    let mut z = Complex { re: 0.0, im: 0.0 };
     move |_| {
         z = z * z + c;
         z.norm_sqr() < 4.0
