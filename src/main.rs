@@ -1,5 +1,3 @@
-extern crate num;
-
 use image::{png::PNGEncoder, ColorType};
 use num::Complex;
 use std::{fmt::Debug, fs::File, io, str::FromStr};
@@ -78,8 +76,8 @@ fn pixel_to_point(bounds: &Point, corner: &Corner, pixel: Point) -> Complex<f64>
     let width = lower_right.re - upper_left.re;
     let height = upper_left.im - lower_right.im;
 
-    let re: f64 = upper_left.re + (pixel.0 as f64 * width / bounds.0 as f64);
-    let im: f64 = upper_left.im - (pixel.1 as f64 * height / bounds.1 as f64);
+    let re = upper_left.re + (pixel.0 as f64 * width / bounds.0 as f64);
+    let im = upper_left.im - (pixel.1 as f64 * height / bounds.1 as f64);
 
     Complex { re, im }
 }
@@ -90,13 +88,24 @@ fn parse_complex(s: &str) -> Option<Complex<f64>> {
 
 fn parse_pair<T: FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)> {
     s.find(separator).map(|index| {
-        let (start, rest) = (&s[..index], &s[index + 1..]);
+        let (start, rest) = split_at_exlusive(s, index);
 
-        let left = T::from_str(start).unwrap_or_else(parse_exit(start, s, separator));
-        let right = T::from_str(rest).unwrap_or_else(parse_exit(rest, s, separator));
-
-        (left, right)
+        (
+            from_str_or(start, parse_exit(start, s, separator)),
+            from_str_or(rest, parse_exit(rest, s, separator)),
+        )
     })
+}
+
+fn split_at_exlusive(s: &str, index: usize) -> (&str, &str) {
+    (&s[..index], &s[index + 1..])
+}
+
+fn from_str_or<T: FromStr + Debug, F>(part: &str, f: F) -> T
+where
+    F: FnOnce(T::Err) -> T,
+{
+    T::from_str(part).unwrap_or_else(f)
 }
 
 fn parse_exit<'a, T, E>(sub: &'a str, s: &'a str, separator: char) -> impl FnOnce(E) -> T + 'a {
