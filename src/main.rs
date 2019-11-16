@@ -20,17 +20,34 @@ fn main() {
     let upper_left = parse_complex(&args[3]).expect("error parsing upper left corner point");
     let lower_right = parse_complex(&args[4]).expect("error parsing lower right corner point");
 
+    let corner = Corner {
+        upper_left,
+        lower_right,
+    };
+
     let (width, height) = bounds;
     let mut pixels = vec![0; width * height];
 
-    render(
-        &mut pixels,
-        bounds,
-        Corner {
-            upper_left,
-            lower_right,
-        },
-    );
+    let threads = 16;
+    let rows_per_band = height / threads + 1;
+
+    let bands: Vec<&mut [u8]> = pixels.chunks_mut(rows_per_band * width).collect();
+
+    crossbeam::scope(|spawner| {
+        bands.into_iter().enumerate().for_each(|(i, band)| {
+            let top = rows_per_band * i;
+            let height = band.len() / width;
+            let band_bounds = (width, height);
+            let band_corner = Corner {
+                upper_left: pixel_to_point(&bounds, &corner, (0, top)),
+                lower_right: pixel_to_point(&bounds, &corner, (width, top + height)),
+            };
+
+            spawner.spawn(move || render(band, band_bounds, band_corner));
+        })
+    });
+
+    // render(&mut pixels, bounds, corner);
 
     write_image(&args[1], &pixels, bounds).expect("error writing png file")
 }
