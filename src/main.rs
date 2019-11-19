@@ -105,7 +105,7 @@ fn parse_complex(s: &str) -> Option<Complex<f64>> {
 
 fn parse_pair<T: FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)> {
     s.find(separator).map(|index| {
-        let (start, rest) = split_at_exlusive(s, index);
+        let (start, rest) = split_and_remove(s, index);
 
         (
             from_str_or(start, parse_exit(start, s, separator)),
@@ -114,7 +114,7 @@ fn parse_pair<T: FromStr + Debug>(s: &str, separator: char) -> Option<(T, T)> {
     })
 }
 
-fn split_at_exlusive(s: &str, index: usize) -> (&str, &str) {
+fn split_and_remove(s: &str, index: usize) -> (&str, &str) {
     (&s[..index], &s[index + 1..])
 }
 
